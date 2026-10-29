@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#090909">
+<title>CinePlay</title>
+<style>
+:root{--bg:#090909;--panel:#171717;--red:#e50914;--muted:#aaa;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--white);font-family:Arial,Helvetica,sans-serif}
+header{position:sticky;top:0;z-index:5;background:rgba(9,9,9,.96);padding:14px 16px;border-bottom:1px solid #242424;display:flex;align-items:center;gap:12px}
+.logo{font-size:25px;font-weight:900;letter-spacing:-1px;color:var(--red)}.logo span{color:white}
+main{padding:16px;max-width:1100px;margin:auto}.toolbar{display:flex;gap:8px;margin:12px 0 20px}
+input{min-width:0;flex:1;background:#222;border:1px solid #444;border-radius:8px;color:white;padding:12px;font-size:15px}
+button{background:var(--red);border:0;color:white;padding:11px 14px;border-radius:8px;font-weight:bold;cursor:pointer}
+.tabs{display:flex;gap:8px;overflow:auto;padding-bottom:8px}.tabs button{white-space:nowrap;background:#292929}.tabs button.active{background:var(--red)}
+h2{font-size:19px;margin:22px 0 12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{background:var(--panel);border-radius:9px;overflow:hidden;cursor:pointer}.card img{display:block;width:100%;aspect-ratio:2/3;object-fit:cover;background:#252525}.card .info{padding:8px}.card strong{font-size:13px;display:block;line-height:1.3}.meta{font-size:11px;color:var(--muted);margin-top:5px}
+.hero{border-radius:12px;min-height:190px;background-size:cover;background-position:center;display:flex;align-items:end;padding:18px;margin:12px 0 20px;position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#090909 0%,transparent 100%),linear-gradient(90deg,rgba(0,0,0,.6),transparent)}
+.hero>div{position:relative;max-width:75%}.hero h1{font-size:24px;margin:0 0 7px}.hero p{font-size:12px;color:#ddd;margin:0 0 12px}
+.notice{background:#241b0b;border:1px solid #5a4317;color:#f5d99a;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;margin:14px 0}
+.status{color:var(--muted);font-size:13px;padding:16px 0}.hidden{display:none!important}
+.modal{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.88);overflow:auto;padding:18px}
+.modalbox{max-width:650px;margin:20px auto;background:#171717;border-radius:12px;overflow:hidden}.modalbox img{width:100%;max-height:300px;object-fit:cover}.modalcontent{padding:18px}.modalcontent p{color:#ccc;line-height:1.5;font-size:14px}.close{float:right;background:#333}.provider{display:inline-block;background:#292929;padding:8px;border-radius:6px;margin:4px;font-size:12px}
+.settings{background:#171717;border-radius:10px;padding:14px;margin:18px 0}.settings small{color:#aaa;line-height:1.5;display:block;margin-top:8px}
+footer{color:#777;font-size:11px;line-height:1.5;padding:24px 0;text-align:center}
+@media(min-width:600px){.grid{grid-template-columns:repeat(5,minmax(0,1fr))}.hero{min-height:280px}.hero h1{font-size:34px}}
+</style>
+</head>
+<body>
+<header><div class="logo">CINE<span>PLAY</span></div><div style="margin-left:auto;color:#aaa;font-size:12px">SEU CINEMA</div></header>
+<main>
+<div class="settings">
+  <strong>Conectar catálogo online</strong>
+  <div class="toolbar" style="margin-bottom:0"><input id="apiKey" type="password" placeholder="Cole sua chave API do TMDB"><button id="saveKey">Conectar</button></div>
+  <small>A chave é fornecida pelo TMDB. Para uso pessoal/não comercial, consulte e cumpra os termos e a atribuição exigida. Ela fica salva somente neste dispositivo.</small>
+</div>
+<div class="notice">O CinePlay exibe informações, cartazes e opções oficiais de onde assistir. Ele não hospeda nem desbloqueia filmes. A reprodução deve ocorrer em serviços ou fontes com autorização.</div>
+<div class="toolbar"><input id="search" placeholder="Buscar filmes ou séries..." aria-label="Buscar"><button id="searchBtn">Buscar</button></div>
+<div class="tabs">
+<button class="active" data-kind="movie">Filmes</button><button data-kind="tv">Séries</button><button data-kind="trending">Em alta</button><button data-kind="search">Resultados</button>
+</div>
+<section id="hero" class="hero hidden"></section>
+<h2 id="heading">Filmes populares</h2>
+<div id="status" class="status">Adicione sua chave API do TMDB para carregar o catálogo online.</div>
+<div id="grid" class="grid"></div>
+<footer>Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB. Dados e imagens: The Movie Database (TMDB).<br>CinePlay é um projeto independente para uso pessoal.</footer>
+</main>
+<div id="modal" class="modal hidden"><div class="modalbox"><div id="modalBody"></div></div></div>
+<script>
+const API='https://api.themoviedb.org/3', IMG='https://image.tmdb.org/t/p/w500', BACK='https://image.tmdb.org/t/p/w1280';
+let key=localStorage.getItem('cineplay_tmdb_key')||'', kind='movie';
+const $=id=>document.getElementById(id);
+$('apiKey').value=key;
+function msg(t){$('status').textContent=t}
+async function api(path){
+ if(!key) throw Error('Insira sua chave API do TMDB acima.');
+ const r=await fetch(API+path+(path.includes('?')?'&':'?')+'api_key='+encodeURIComponent(key)+'&language=pt-BR');
+ if(!r.ok) throw Error(r.status===401?'Chave API inválida. Confira sua chave no TMDB.':'Não foi possível carregar o catálogo. Tente novamente.');
+ return r.json();
+}
+function titleOf(x,k=kind){return x.title||x.name||x.original_title||x.original_name||'Sem título'}
+function poster(x){return x.poster_path?IMG+x.poster_path:'https://placehold.co/500x750/222/fff?text=Sem+poster'}
+function render(items,k){
+ $('grid').innerHTML='';
+ if(!items.length){msg('Nenhum título encontrado.');return}
+ msg(items.length+' títulos carregados.');
+ items.forEach(x=>{
+  const c=document.createElement('article');c.className='card';
+  c.innerHTML=`<img loading="lazy" src="${poster(x)}" alt=""><div class="info"><strong></strong><div class="meta"></div></div>`;
+  c.querySelector('strong').textContent=titleOf(x,k);
+  c.querySelector('.meta').textContent=(x.release_date||x.first_air_date||'')+' • ★ '+(x.vote_average?x.vote_average.toFixed(1):'—');
+  c.onclick=()=>details(x,k);$('grid').appendChild(c);
+ });
+}
+async function load(k='movie',path){
+ kind=k; $('hero').classList.add('hidden');
+ $('heading').textContent=k==='tv'?'Séries populares':k==='trending'?'Em alta':'Filmes populares';
+ msg('Carregando catálogo...');
+ try{
+  const data=await api(path|| (k==='trending'?'/trending/all/week':`/${k}/popular`));
+  render(data.results||[],k==='trending'?'movie':k);
+  if(k==='movie'&&data.results?.[0]) showHero(data.results[0]);
+ }catch(e){msg(e.message)}
+}
+function showHero(x){
+ const h=$('hero');h.style.backgroundImage=`url("${x.backdrop_path?BACK+x.backdrop_path:poster(x)}")`;
+ h.innerHTML='<div><h1></h1><p></p><button>Ver detalhes</button></div>';
+ h.querySelector('h1').textContent=titleOf(x);
+ h.querySelector('p').textContent=x.overview||'Conheça este título.';
+ h.querySelector('button').onclick=()=>details(x,'movie');h.classList.remove('hidden');
+}
+async function search(){
+ const q=$('search').value.trim();if(!q)return;
+ $('heading').textContent='Resultados para: '+q;msg('Pesquisando...');
+ try{const d=await api('/search/multi?query='+encodeURIComponent(q));render((d.results||[]).filter(x=>['movie','tv'].includes(x.media_type)), 'movie')}
+ catch(e){msg(e.message)}
+}
+async function details(x,k){
+ const type=x.media_type||k||'movie';
+ $('modal').classList.remove('hidden');$('modalBody').innerHTML='<div class="modalcontent">Carregando detalhes...</div>';
+ try{
+  const d=await api(`/${type}/${x.id}?append_to_response=watch/providers`);
+  const wrap=document.createElement('div');
+  if(d.backdrop_path){const im=document.createElement('img');im.src=BACK+d.backdrop_path;im.alt='';wrap.appendChild(im)}
+  const content=document.createElement('div');content.className='modalcontent';
+  const close=document.createElement('button');close.className='close';close.textContent='Fechar';close.onclick=()=>$('modal').classList.add('hidden');content.appendChild(close);
+  const h=document.createElement('h2');h.textContent=titleOf(d);content.appendChild(h);
+  const p=document.createElement('p');p.textContent=d.overview||'Sinopse não disponível.';content.appendChild(p);
+  const meta=document.createElement('p');meta.textContent='Lançamento: '+(d.release_date||d.first_air_date||'—')+' | Nota: '+(d.vote_average?d.vote_average.toFixed(1):'—');content.appendChild(meta);
+  const prov=d['watch/providers']?.results?.BR;
+  const label=document.createElement('h3');label.textContent='Onde assistir no Brasil';content.appendChild(label);
+  if(prov?.link){const a=document.createElement('a');a.href=prov.link;a.target='_blank';a.rel='noopener';a.textContent='Consultar opções oficiais de streaming';a.style.color='#ff5961';content.appendChild(a)}
+  else {const no=document.createElement('p');no.textContent='Não há opções de streaming informadas pelo catálogo para o Brasil.';content.appendChild(no)}
+  ['flatrate','free','ads','rent','buy'].forEach(group=>{
+   (prov?.[group]||[]).forEach(v=>{const s=document.createElement('span');s.className='provider';s.textContent=v.provider_name;content.appendChild(s)})
+  });
+  const credit=document.createElement('small');credit.style.color='#999';credit.textContent='Disponibilidade sujeita a alterações. Consulte o serviço oficial.';content.appendChild(credit);
+  wrap.appendChild(content);$('modalBody').replaceChildren(wrap);
+ }catch(e){$('modalBody').textContent=e.message}
+}
+$('saveKey').onclick=()=>{key=$('apiKey').value.trim();if(!key){msg('Cole sua chave API.');return}localStorage.setItem('cineplay_tmdb_key',key);load('movie')};
+$('searchBtn').onclick=search;$('search').addEventListener('keydown',e=>{if(e.key==='Enter')search()});
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+ const k=b.dataset.kind;if(k==='search'){search();return}load(k,k==='trending'?'/trending/all/week':null);
+});
+$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};
+if(key)load('movie');
+</script>
+</body>
+</html>
